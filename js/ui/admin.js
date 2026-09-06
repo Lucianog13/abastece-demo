@@ -1,0 +1,571 @@
+// Panel de administración: editar precios/promos y subir fotos desde la app.
+// Los cambios se guardan en Supabase (los ven todos los dispositivos).
+// v2: estado visible por fila (✔/✘), fotos "pendientes" que se suben con "Guardar",
+// y avisos de error diferenciados.
+(function (root, factory) {
+  if (typeof module !== "undefined" && module.exports) module.exports = factory();
+  else root.AdminUI = factory();
+})(typeof window !== "undefined" ? window : globalThis, function () {
+  let productos = [];
+  let listaEl = null;
+  let toastFn = () => {};
+  let filtro = "";
+  let editandoPid = null;
+  // Estado temporal de "sin stock por sabor" mientras se edita un producto
+  let sinStockEditando = {};
+  // Fotos elegidas pero aún no guardadas: pid → File
+  const fotosPendientes = new Map();
+
+  // "Jamón, Pizza, Queso" → ["Jamón", "Pizza", "Queso"]
+  function parseSabores(txt) {
+    return (txt || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  // Comprime/redimensiona una foto antes de subirla (evita archivos pesados
+  // que saturan la memoria del navegador y el storage de Supabase).
+  // Resultado: JPEG de máx ~800px y ~150 KB.
+  function comprimirImagen(file, maxLado, calidad) {
+    maxLado = maxLado || 800;
+    calidad = calidad || 0.82;
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let w = img.naturalWidth || img.width;
+          let h = img.naturalHeight || img.height;
+          const escala = Math.min(1, maxLado / Math.max(w, h));
+          w = Math.max(1, Math.round(w * escala));
+          h = Math.max(1, Math.round(h * escala));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(
+            (blob) => {
+              URL.revokeObjectURL(url);
+              if (!blob) { reject(new Error("no se pudo procesar la imagen")); return; }
+              const nombre = (file.name || "foto.jpg").replace(/\.[^.]+$/, "") + ".jpg";
+              resolve(new File([blob], nombre, { type: "image/jpeg" }));
+            },
+            "image/jpeg",
+            calidad
+          );
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("imagen inválida"));
+      };
+      img.src = url;
+    });
+  }
+
+  const API = () => window.APP_CONFIG;
+
+  async function cargar() {
+    const cfg = API();
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?select=*&order=nombre.asc`,
+      { headers: await headersAuth(false) }
+    );
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    productos = await res.json();
+  }
+
+  function filaHTML(p) {
+    const foto = p.imagen
+      ? `<img class="thumb" src="${p.imagen}" alt="" onerror="this.remove()">`
+      : `<span class="thumb">${p.emoji || "📦"}</span>`;
+    const pendiente = fotosPendientes.has(p.id) ? "📷 foto lista — apretá Guardar" : "";
+    const inactivo = p.activo === false;
+    return `
+    <div class="fila-admin${inactivo ? " inactiva" : ""}" data-id="${p.id}">
+      ${foto}
+      <div class="info">
+        <div class="nombre">${p.nombre}</div>
+        <div class="detalle">${p.marca ? p.marca + " · " : ""}${p.presentacion ? p.presentacion + " · " : ""}${p.unidad}</div>
+      </div>
+      <div class="campos">
+        <label class="campo">Precio $<input type="number" class="in-precio" value="${p.precio}" min="0" step="100"></label>
+        <label class="campo promo-row"><input type="checkbox" class="in-promo" ${p.en_promo ? "checked" : ""}> Promo</label>
+        <label class="campo">Anterior $<input type="number" class="in-anterior" value="${p.precio_anterior || ""}" min="0" step="100"></label>
+      </div>
+      <label class="campo campo-desc">Descripción <input type="text" class="in-descripcion" value="${p.descripcion || ""}" placeholder="Ej: Sabores surtido, chocolate y vainilla"></label>
+      ${Array.isArray(p.sabores) && p.sabores.length ? `
+      <div class="sabores-admin">
+        <span class="sabores-label">Sabores (tocá para marcar sin stock):</span>
+        ${p.sabores.map((s) => {
+          const fuera = (Array.isArray(p.sabores_sin_stock) ? p.sabores_sin_stock : []).includes(s);
+          return `<button type="button" class="chip-sabor${fuera ? " sin-stock" : ""}" data-accion="sabor-stock" data-sabor="${s}">${s}</button>`;
+        }).join("")}
+      </div>` : ""}
+      <div class="acciones">
+        <span class="estado-fila">${pendiente}</span>
+        <button class="btn small primary" data-accion="guardar">Guardar</button>
+        <button class="btn small secondary" data-accion="foto">Cambiar foto</button>
+        <button class="btn small outline" data-accion="editar">✏️ Editar</button>
+        <button class="btn small ${inactivo ? "primary" : "outline"}" data-accion="stock">${inactivo ? "✅ Activar" : "🚫 Sin stock"}</button>
+        <button class="btn small danger" data-accion="eliminar">🗑 Eliminar</button>
+        <input type="file" class="in-foto" accept="image/png,image/jpeg,image/webp" hidden>
+      </div>
+    </div>`;
+  }
+
+  function render(q) {
+    filtro = q || "";
+    const f = filtro.toLowerCase();
+    const lista = f
+      ? productos.filter((p) => (p.nombre + " " + (p.marca || "")).toLowerCase().includes(f))
+      : productos;
+    listaEl.innerHTML = lista.length
+      ? lista.map(filaHTML).join("")
+      : '<p class="carrito-vacio">Sin resultados.</p>';
+  }
+
+  /** Muestra el estado de una fila: ✔ guardado / ✘ error / pendiente. */
+  function marcarEstado(pid, texto, tipo) {
+    const fila = listaEl && listaEl.querySelector(`[data-id="${CSS.escape(pid)}"]`);
+    if (!fila) return;
+    const el = fila.querySelector(".estado-fila");
+    if (el) {
+      el.textContent = texto;
+      el.className = "estado-fila " + (tipo || "");
+    }
+  }
+
+  async function guardar(pid) {
+    const p = productos.find((x) => x.id === pid);
+    const fila = listaEl.querySelector(`[data-id="${CSS.escape(pid)}"]`);
+    if (!p || !fila) return;
+    const precio = parseInt(fila.querySelector(".in-precio").value, 10);
+    const enPromo = fila.querySelector(".in-promo").checked;
+    const anteriorRaw = fila.querySelector(".in-anterior").value.trim();
+    const precioAnterior = enPromo && anteriorRaw ? parseInt(anteriorRaw, 10) : null;
+    const descripcion = fila.querySelector(".in-descripcion").value.trim();
+    if (!Number.isFinite(precio) || precio <= 0) {
+      marcarEstado(pid, "✘ precio inválido", "error");
+      toastFn("Precio inválido", "error");
+      return;
+    }
+    const cfg = API();
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      marcarEstado(pid, "✘ sesión vencida — volvé a entrar", "error");
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+
+    // 1) Si hay una foto elegida pero sin subir, subirla primero.
+    if (fotosPendientes.has(pid)) {
+      marcarEstado(pid, "⏳ subiendo foto…", "pendiente");
+      const url = await subirFoto(pid, fotosPendientes.get(pid), h);
+      if (!url) {
+        marcarEstado(pid, "✘ no se pudo subir la foto", "error");
+        return;
+      }
+      p.imagen = url;
+      fotosPendientes.delete(pid);
+    }
+
+    // 2) Guardar precio/promo/descripción.
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(pid)}`,
+      {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify({ precio, en_promo: enPromo, precio_anterior: precioAnterior, descripcion }),
+      }
+    );
+    if (!res.ok) {
+      const noAuth = res.status === 401 || res.status === 403;
+      marcarEstado(pid, "✘ " + (noAuth ? "no autorizado" : "error " + res.status), "error");
+      toastFn(noAuth ? "No autorizado — cerrá sesión y volvé a entrar" : "Error al guardar (HTTP " + res.status + ")", "error");
+      return;
+    }
+    p.precio = precio;
+    p.en_promo = enPromo;
+    p.precio_anterior = precioAnterior;
+    p.descripcion = descripcion;
+    marcarEstado(pid, "✔ guardado", "ok");
+    toastFn("Guardado ✔ — visible para todos los dispositivos");
+  }
+
+  /** Activa/desactiva un producto (stock). PATCH a productos.activo. */
+  async function toggleStock(pid) {
+    const p = productos.find((x) => x.id === pid);
+    if (!p) return;
+    const activar = p.activo === false; // está desactivado → pasarlo a activo
+    const cfg = API();
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      marcarEstado(pid, "✘ sesión vencida — volvé a entrar", "error");
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(pid)}`,
+      {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify({ activo: activar }),
+      }
+    );
+    if (!res.ok) {
+      const noAuth = res.status === 401 || res.status === 403;
+      marcarEstado(pid, "✘ " + (noAuth ? "no autorizado" : "error " + res.status), "error");
+      toastFn(noAuth ? "No autorizado — cerrá sesión y volvé a entrar" : "Error al guardar (HTTP " + res.status + ")", "error");
+      return;
+    }
+    p.activo = activar;
+    render(filtro);
+    toastFn(activar ? "Producto activado ✔ — ya se puede pedir" : "Producto desactivado — sin stock, no se puede pedir");
+  }
+
+  /** Marca/desmarca un sabor como "sin stock" (PATCH a productos.sabores_sin_stock). */
+  async function toggleSaborStock(pid, sabor) {
+    const p = productos.find((x) => x.id === pid);
+    if (!p) return;
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+    const actual = Array.isArray(p.sabores_sin_stock) ? p.sabores_sin_stock : [];
+    const nuevo = actual.includes(sabor) ? actual.filter((x) => x !== sabor) : actual.concat(sabor);
+    const res = await fetch(`${API().supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(pid)}`, {
+      method: "PATCH",
+      headers: { ...h, Prefer: "return=minimal" },
+      body: JSON.stringify({ sabores_sin_stock: nuevo }),
+    });
+    if (!res.ok) {
+      toastFn("Error al actualizar (HTTP " + res.status + ")", "error");
+      return;
+    }
+    p.sabores_sin_stock = nuevo;
+    render(filtro);
+    toastFn(nuevo.includes(sabor) ? `"${sabor}" marcado sin stock` : `"${sabor}" activado`);
+  }
+
+  /** Elimina un producto del catálogo (DELETE en la nube). */
+  async function eliminarProducto(pid) {
+    const p = productos.find((x) => x.id === pid);
+    if (!p) return;
+    if (!window.confirm(`¿Eliminar "${p.nombre}" del catálogo? Esta acción no se puede deshacer.`)) return;
+    const cfg = API();
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(pid)}`,
+      { method: "DELETE", headers: { ...h, Prefer: "return=minimal" } }
+    );
+    if (!res.ok) {
+      const noAuth = res.status === 401 || res.status === 403;
+      toastFn(noAuth ? "No autorizado — cerrá sesión y volvé a entrar" : "Error al eliminar (HTTP " + res.status + ")", "error");
+      return;
+    }
+    productos = productos.filter((x) => x.id !== pid);
+    render(filtro);
+    toastFn("Producto eliminado del catálogo ✔");
+  }
+
+  /** Sube la foto al Storage y asocia la URL al producto. Devuelve la URL o null. */
+  async function subirFoto(pid, file, h) {
+    const p = productos.find((x) => x.id === pid);
+    if (!p || !file) return null;
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    if (!["png", "jpg", "jpeg", "webp"].includes(ext)) {
+      toastFn("Formato no soportado (usá PNG, JPG o WEBP)", "error");
+      return null;
+    }
+    // Comprimir antes de subir: evita "memoria insuficiente" y archivos gigantes.
+    let comprimida;
+    try {
+      comprimida = await comprimirImagen(file);
+    } catch {
+      toastFn("No se pudo procesar la imagen (probá con otra foto)", "error");
+      return null;
+    }
+    const cfg = API();
+    const nombre = pid + "-" + Date.now() + ".jpg";
+    let res;
+    try {
+      res = await fetch(`${cfg.supabaseUrl}/storage/v1/object/fotos/${nombre}`, {
+        method: "POST",
+        headers: {
+          ...h,
+          "Content-Type": "image/jpeg",
+          "x-upsert": "true",
+        },
+        body: comprimida,
+      });
+    } catch {
+      toastFn("Error de red al subir la foto", "error");
+      return null;
+    }
+    if (!res.ok) {
+      toastFn("Error al subir la foto (HTTP " + res.status + ")", "error");
+      return null;
+    }
+    const url = `${cfg.supabaseUrl}/storage/v1/object/public/fotos/${nombre}`;
+    const res2 = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(pid)}`,
+      {
+        method: "PATCH",
+        headers: { ...h, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ imagen: url }),
+      }
+    );
+    if (!res2.ok) {
+      toastFn("Foto subida, pero no se pudo asociar al producto", "error");
+      return null;
+    }
+    return url;
+  }
+
+  /** Al elegir una foto NO se sube: queda pendiente hasta apretar "Guardar". */
+  function elegirFoto(pid, file) {
+    if (!file) return;
+    fotosPendientes.set(pid, file);
+    marcarEstado(pid, "📷 foto lista — apretá Guardar", "pendiente");
+  }
+
+  function abrirEditar(pid) {
+    const p = productos.find((x) => x.id === pid);
+    if (!p) return;
+    editandoPid = pid;
+    document.getElementById("editar-producto-actual").textContent = p.nombre;
+    document.getElementById("editar-nombre").value = p.nombre;
+    document.getElementById("editar-descripcion").value = p.descripcion || "";
+    document.getElementById("editar-sabores").value = Array.isArray(p.sabores) ? p.sabores.join(", ") : "";
+    sinStockEditando = {};
+    renderSinStock();
+    document.getElementById("modal-editar").hidden = false;
+    document.getElementById("editar-nombre").focus();
+  }
+
+  function cerrarEditar() {
+    editandoPid = null;
+    document.getElementById("modal-editar").hidden = true;
+  }
+
+  /** Pinta los checkboxes de "sin stock" por sabor, según el campo Sabores. */
+  function renderSinStock() {
+    const cont = document.getElementById("editar-sin-stock");
+    if (!cont) return;
+    const p = productos.find((x) => x.id === editandoPid);
+    const sabores = parseSabores(document.getElementById("editar-sabores").value);
+    if (!p || !sabores.length) {
+      cont.innerHTML = "";
+      cont.hidden = true;
+      return;
+    }
+    const base = new Set(Array.isArray(p.sabores_sin_stock) ? p.sabores_sin_stock : []);
+    cont.hidden = false;
+    cont.innerHTML = sabores.map((s) => {
+      const checked = Object.prototype.hasOwnProperty.call(sinStockEditando, s)
+        ? sinStockEditando[s]
+        : base.has(s);
+      return `<label class="chk-sin-stock"><input type="checkbox" data-sabor="${s}" ${checked ? "checked" : ""}> <span>${s}</span></label>`;
+    }).join("");
+    cont.querySelectorAll("input[data-sabor]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        sinStockEditando[cb.dataset.sabor] = cb.checked;
+      });
+    });
+  }
+
+  async function guardarEdicion() {
+    if (!editandoPid) return;
+    const nombre = document.getElementById("editar-nombre").value.trim();
+    const descripcion = document.getElementById("editar-descripcion").value.trim();
+    const sabores = parseSabores(document.getElementById("editar-sabores").value);
+    if (!nombre) {
+      toastFn("El nombre no puede quedar vacío", "error");
+      return;
+    }
+    const p = productos.find((x) => x.id === editandoPid);
+    const baseSinStock = new Set(p && Array.isArray(p.sabores_sin_stock) ? p.sabores_sin_stock : []);
+    const saboresSinStock = sabores.filter((s) =>
+      Object.prototype.hasOwnProperty.call(sinStockEditando, s) ? sinStockEditando[s] : baseSinStock.has(s)
+    );
+    const cfg = API();
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+    const res = await fetch(
+      `${cfg.supabaseUrl}/rest/v1/productos?id=eq.${encodeURIComponent(editandoPid)}`,
+      {
+        method: "PATCH",
+        headers: { ...h, Prefer: "return=minimal" },
+        body: JSON.stringify({ nombre, descripcion, sabores, sabores_sin_stock: saboresSinStock }),
+      }
+    );
+    if (!res.ok) {
+      toastFn(
+        res.status === 401 || res.status === 403
+          ? "No autorizado — cerrá sesión y volvé a entrar"
+          : "Error al guardar (HTTP " + res.status + ")",
+        "error"
+      );
+      return;
+    }
+    if (p) { p.nombre = nombre; p.descripcion = descripcion; p.sabores = sabores; p.sabores_sin_stock = saboresSinStock; }
+    cerrarEditar();
+    render(filtro);
+    marcarEstado(editandoPid, "✔ guardado", "ok");
+    toastFn("Guardado ✔ — visible para todos los dispositivos");
+  }
+
+  async function headersAuth(conJson) {
+    const h = { apikey: API().supabaseKey };
+    const t = await window.Auth.token();
+    if (t) h.Authorization = "Bearer " + t;
+    if (conJson) h["Content-Type"] = "application/json";
+    return h;
+  }
+
+  async function crearProducto(e) {
+    e.preventDefault();
+    const form = document.getElementById("form-admin-nuevo");
+    const get = (id) => document.getElementById(id).value.trim();
+    const nombre = get("nuevo-nombre");
+    const marca = get("nuevo-marca");
+    const categoria = get("nuevo-categoria");
+    const presentacion = get("nuevo-presentacion");
+    const unidad = get("nuevo-unidad") || "unidad";
+    const precio = parseInt(get("nuevo-precio"), 10);
+    const sabores = parseSabores(get("nuevo-sabores"));
+    const fotoInput = document.getElementById("nuevo-foto");
+    if (!nombre || !Number.isFinite(precio) || precio <= 0) {
+      toastFn("Completá nombre y precio", "error");
+      return;
+    }
+    const cfg = API();
+    const h = await headersAuth(true);
+    if (!h.Authorization) {
+      toastFn("Sesión vencida — cerrá sesión y volvé a entrar", "error");
+      return;
+    }
+    const slug = nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "producto";
+    const id = slug + "-" + Date.now().toString(36);
+
+    let imagen = "";
+    if (fotoInput.files && fotoInput.files[0]) {
+      const file = fotoInput.files[0];
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      if (!["png", "jpg", "jpeg", "webp"].includes(ext)) {
+        toastFn("Formato de foto no soportado (PNG, JPG o WEBP)", "error");
+        return;
+      }
+      toastFn("Procesando y subiendo foto…");
+      let comprimida;
+      try {
+        comprimida = await comprimirImagen(file);
+      } catch {
+        toastFn("No se pudo procesar la imagen (probá con otra foto)", "error");
+        return;
+      }
+      const fotoNombre = id + ".jpg";
+      let res;
+      try {
+        res = await fetch(`${cfg.supabaseUrl}/storage/v1/object/fotos/${fotoNombre}`, {
+          method: "POST",
+          headers: { ...h, "Content-Type": "image/jpeg", "x-upsert": "true" },
+          body: comprimida,
+        });
+      } catch {
+        toastFn("Error de red al subir la foto", "error");
+        return;
+      }
+      if (!res.ok) {
+        toastFn("Error al subir la foto (HTTP " + res.status + ")", "error");
+        return;
+      }
+      imagen = `${cfg.supabaseUrl}/storage/v1/object/public/fotos/${fotoNombre}`;
+    }
+
+    const payload = {
+      id, nombre, marca, categoria, presentacion,
+      unidad, precio, en_promo: false, precio_anterior: null,
+      retornable: false, emoji: "", imagen,
+      descripcion: get("nuevo-descripcion"),
+      sabores,
+    };
+    const res = await fetch(`${cfg.supabaseUrl}/rest/v1/productos`, {
+      method: "POST",
+      headers: { ...h, Prefer: "return=minimal" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      toastFn(
+        res.status === 401 || res.status === 403
+          ? "No autorizado — cerrá sesión y volvé a entrar"
+          : "Error al crear (HTTP " + res.status + ")",
+        "error"
+      );
+      return;
+    }
+    form.reset();
+    form.hidden = true;
+    toastFn("Producto creado ✔ — visible para todos los dispositivos");
+    await cargar();
+    render(filtro);
+  }
+
+  function init(o) {
+    listaEl = o.lista;
+    toastFn = o.toast || toastFn;
+    document.getElementById("btn-editar-cancelar").addEventListener("click", cerrarEditar);
+    document.getElementById("btn-editar-guardar").addEventListener("click", guardarEdicion);
+    document.getElementById("editar-sabores").addEventListener("input", renderSinStock);
+    const modalEditar = document.getElementById("modal-editar");
+    modalEditar.addEventListener("click", (e) => {
+      if (e.target === modalEditar) cerrarEditar();
+    });
+    o.busqueda.addEventListener("input", (e) => render(e.target.value));
+    const formNuevo = document.getElementById("form-admin-nuevo");
+    document.getElementById("btn-admin-nuevo").addEventListener("click", () => {
+      formNuevo.hidden = !formNuevo.hidden;
+      if (!formNuevo.hidden) formNuevo.querySelector("input").focus();
+    });
+    document.getElementById("btn-admin-nuevo-cancelar").addEventListener("click", () => {
+      formNuevo.hidden = true;
+      formNuevo.reset();
+    });
+    formNuevo.addEventListener("submit", crearProducto);
+    listaEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-accion]");
+      if (!btn) return;
+      const fila = btn.closest(".fila-admin");
+      const pid = fila.dataset.id;
+      if (btn.dataset.accion === "guardar") guardar(pid);
+      if (btn.dataset.accion === "foto") fila.querySelector(".in-foto").click();
+      if (btn.dataset.accion === "editar") abrirEditar(pid);
+      if (btn.dataset.accion === "stock") toggleStock(pid);
+      if (btn.dataset.accion === "sabor-stock") toggleSaborStock(pid, btn.dataset.sabor);
+      if (btn.dataset.accion === "eliminar") eliminarProducto(pid);
+    });
+    listaEl.addEventListener("change", (e) => {
+      if (!e.target.classList.contains("in-foto")) return;
+      const fila = e.target.closest(".fila-admin");
+      if (e.target.files && e.target.files[0]) elegirFoto(fila.dataset.id, e.target.files[0]);
+      e.target.value = "";
+    });
+  }
+
+  return { init, cargar, render };
+});

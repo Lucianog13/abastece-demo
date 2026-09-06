@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Abastece — Pedidos online para tu comercio</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  <link rel="apple-touch-icon" href="assets/logo.png">
+  <!-- Fuentes del apartado Promociones (lujo dorado): Playfair Display + Cinzel -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=1">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="topbar-inner">
+      <div class="marca">
+        <svg class="logo" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg" alt="Abastece">
+          <defs>
+            <linearGradient id="gLogo" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#3b82f6"/>
+              <stop offset=".6" stop-color="#7c3aed"/>
+              <stop offset="1" stop-color="#a855f7"/>
+            </linearGradient>
+          </defs>
+          <path d="M120 34 L194 77 L194 163 L120 206 L46 163 L46 77 Z" fill="url(#gLogo)" stroke="url(#gLogo)" stroke-width="16" stroke-linejoin="round"/>
+          <path d="M78 158 C 92 124, 104 96, 120 74" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <path d="M162 158 C 148 124, 136 96, 120 74" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+        </svg>
+        <div class="marca-texto">
+          <span class="marca-nombre">Abastece</span>
+          <span class="marca-sub">Pedidos online para tu comercio</span>
+        </div>
+      </div>
+      <div class="topbar-der">
+        <button id="btn-carrito" class="btn-carrito">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1.4"/><circle cx="19" cy="21" r="1.4"/><path d="M2.5 3h2l2.6 12.4a2 2 0 0 0 2 1.6h9.3a2 2 0 0 0 2-1.6L22 7H6"/></svg>
+          <span class="btn-carrito-texto">Mi carrito</span>
+          <span id="contador-carrito" class="contador">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Vista: Catálogo ── -->
+    <section id="vista-catalogo" class="vista">
+      <div class="seccion-head">
+        <h2 class="seccion-label">Catálogo de productos</h2>
+        <span id="resultados-catalogo" class="seccion-info"></span>
+      </div>
+      <div id="aviso-pedido-minimo" class="aviso-minimo destacado-v2" hidden></div>
+      <section id="seccion-promos" class="promos" hidden>
+        <div class="promos-head">
+          <h2 class="promos-titulo">Promociones</h2>
+          <span class="promos-sub">Ofertas destacadas</span>
+        </div>
+        <div id="carrusel-promos" class="carrusel-promos"></div>
+      </section>
+      <div class="search-bar">
+        <svg class="icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="busqueda" placeholder="Buscar producto, marca...">
+      </div>
+      <div class="chips" id="chips-categorias"></div>
+      <div id="grilla-productos" class="grilla"></div>
+    </section>
+
+    <!-- ── Vista: Carrito ── -->
+    <section id="vista-carrito" class="vista" hidden>
+      <div class="seccion-head">
+        <h2 class="seccion-label">Mi carrito</h2>
+        <span class="seccion-info">Revisá cantidades antes de confirmar</span>
+      </div>
+      <div id="items-carrito"></div>
+      <div id="total-carrito" class="total-box"></div>
+      <div class="acciones">
+        <button id="btn-seguir-comprando" class="btn secondary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+          Seguir comprando
+        </button>
+        <button id="btn-confirmar" class="btn primary">
+          Confirmar pedido
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-7-7 7 7-7 7"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ── Vista: Checkout ── -->
+    <section id="vista-checkout" class="vista" hidden>
+      <div class="seccion-head">
+        <h2 class="seccion-label">Datos del cliente</h2>
+      </div>
+      <form id="form-cliente" class="form panel">
+        <label>Nombre del cliente *
+          <input id="cliente-nombre" required autocomplete="off" placeholder="Ej. Juan Pérez">
+        </label>
+        <label>Dirección
+          <input id="cliente-direccion" placeholder="Ej. Av. Siempre Viva 123">
+        </label>
+        <label>Nº de cliente (opcional)
+          <input id="cliente-nro" inputmode="numeric" placeholder="Ej. 1234">
+        </label>
+        <p id="aviso-repetir" class="aviso" hidden>
+          El cliente tiene pedidos anteriores.
+          <button type="button" id="btn-repetir" class="btn small outline">Repetir último pedido</button>
+        </p>
+        <div class="acciones">
+          <button type="button" id="btn-volver-carrito" class="btn secondary">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+            Volver al carrito
+          </button>
+          <button type="submit" id="btn-generar" class="btn primary">
+            Generar pedido
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 9.5 18 20 6.5"/></svg>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ── Vista: Pedido final ── -->
+    <section id="vista-pedido" class="vista" hidden>
+      <div class="seccion-head no-print">
+        <h2 class="seccion-label">Pedido generado</h2>
+        <span class="seccion-info">Enviá el pedido por WhatsApp o imprimilo</span>
+      </div>
+      <div id="resumen-pedido" class="pedido-hoja"></div>
+      <div class="acciones no-print">
+        <button id="btn-copiar" class="btn primary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copiar para WhatsApp
+        </button>
+        <a id="btn-wa" class="btn whatsapp" target="_blank" rel="noopener">
+          <svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.6-1.2.1-.2 0-.4 0-.5l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.2.3-.9.9-.9 2.2s1 2.5 1.1 2.7c.1.2 1.9 2.9 4.6 4 .6.3 1.1.4 1.5.6.6.2 1.2.2 1.6.1.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2 0-.1-.2-.2-.4-.3Z"/></svg>
+          Enviar por WhatsApp
+        </a>
+        <button id="btn-imprimir" class="btn secondary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+          Imprimir / PDF
+        </button>
+        <button id="btn-nuevo-pedido" class="btn secondary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Nuevo pedido
+        </button>
+      </div>
+      <div class="historial no-print">
+        <h3 class="seccion-label">Historial de pedidos</h3>
+        <ul id="lista-historial"></ul>
+      </div>
+    </section>
+
+    <!-- ── Vista: Administración ── -->
+    <section id="vista-admin" class="vista" hidden>
+      <div class="seccion-head">
+        <h2 class="seccion-label">Administración</h2>
+        <div class="head-acciones">
+          <span id="admin-quien" class="seccion-info"></span>
+          <button id="btn-admin-salir" class="btn secondary small">← Volver al catálogo</button>
+          <button id="btn-admin-cerrar" class="btn small outline">Cerrar sesión</button>
+        </div>
+      </div>
+      <div class="admin-tabs">
+        <button id="tab-productos" class="tab active">Productos</button>
+        <button id="tab-pedidos" class="tab">Pedidos</button>
+        <button id="tab-reparto" class="tab">Reparto</button>
+        <button id="tab-clientes" class="tab">Clientes</button>
+      </div>
+      <div id="panel-productos">
+      <div class="search-bar">
+        <svg class="icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="admin-busqueda" placeholder="Buscar producto para editar…" autocomplete="off">
+      </div>
+      <p class="admin-ayuda">Editá precio, promos o foto y tocá «Guardar». Los cambios se guardan en la nube y los ven todos los dispositivos.</p>
+      <div class="admin-nuevo">
+        <button id="btn-admin-nuevo" class="btn primary small">＋ Agregar producto nuevo</button>
+        <form id="form-admin-nuevo" class="form-nuevo" hidden>
+          <div class="form-grid">
+            <label class="campo">Nombre *<input type="text" id="nuevo-nombre" placeholder="Ej: Cerveza Andes Roja" required></label>
+            <label class="campo">Marca<input type="text" id="nuevo-marca" placeholder="Ej: Andes"></label>
+            <label class="campo">Categoría
+              <select id="nuevo-categoria">
+                <option value="cervezas">Cervezas</option>
+                <option value="gaseosas">Gaseosas</option>
+                <option value="aguas">Aguas</option>
+                <option value="jugos">Jugos</option>
+                <option value="vinos">Vinos</option>
+                <option value="espumantes">Espumantes</option>
+                <option value="aperitivos">Aperitivos</option>
+                <option value="snacks">Snacks</option>
+                <option value="galletitas">Galletitas</option>
+                <option value="golosinas">Golosinas</option>
+                <option value="almacen">Almacén</option>
+                <option value="limpieza">Limpieza</option>
+                <option value="kiosco">Kiosco</option>
+                <option value="mascotas">Mascotas</option>
+                <option value="farmacia">Farmacia</option>
+              </select>
+            </label>
+            <label class="campo">Presentación<input type="text" id="nuevo-presentacion" placeholder="Ej: 1LT"></label>
+            <label class="campo">Unidad de venta<input type="text" id="nuevo-unidad" placeholder="Ej: pack x6, cajón x8, unidad"></label>
+            <label class="campo">Precio $ *<input type="number" id="nuevo-precio" min="0" step="100" placeholder="Ej: 15000" required></label>
+          </div>
+          <label class="campo">Descripción<input type="text" id="nuevo-descripcion" placeholder="Ej: Sabores surtido, chocolate y vainilla"></label>
+          <label class="campo">Sabores (separados por coma)<input type="text" id="nuevo-sabores" placeholder="Ej: Jamón, Pizza, Queso"></label>
+          <label class="campo">Foto del producto<input type="file" id="nuevo-foto" accept="image/png,image/jpeg,image/webp"></label>
+          <div class="form-acciones">
+            <button type="submit" class="btn primary small">Crear producto</button>
+            <button type="button" id="btn-admin-nuevo-cancelar" class="btn secondary small">Cancelar</button>
+          </div>
+        </form>
+      </div>
+      <div id="lista-admin" class="lista-admin"></div>
+      </div>
+      <div id="panel-pedidos" hidden>
+        <div class="pedidos-acciones">
+          <button id="btn-imprimir-seleccion" class="btn primary small">🖨 Imprimir seleccionados</button>
+          <button id="btn-imprimir-todo" class="btn secondary small">🖨 Imprimir todo</button>
+          <button id="btn-recargar-pedidos" class="btn small outline">↻ Actualizar</button>
+        </div>
+        <div id="lista-pedidos" class="lista-pedidos"></div>
+      </div>
+      <div id="panel-reparto" hidden>
+        <div class="pedidos-acciones">
+          <button id="btn-reparto-cargar" class="btn primary small">↻ Cargar pedidos de hoy</button>
+          <button id="btn-unificar" class="btn small outline">🔗 Unificar en una sola carga</button>
+          <button id="btn-carga-z1" class="btn small secondary">🖨 Carga Z1</button>
+          <button id="btn-carga-z2" class="btn small secondary">🖨 Carga Z2</button>
+          <button id="btn-clientes-z1" class="btn small secondary">🖨 Clientes Z1</button>
+          <button id="btn-clientes-z2" class="btn small secondary">🖨 Clientes Z2</button>
+        </div>
+        <p id="sugerencia-unificar" class="admin-ayuda" hidden>💡 Una zona trae pocos pedidos — podés unificar todo en una sola carga.</p>
+        <div id="reparto-resumen" class="reparto-resumen"></div>
+        <div id="mapa-reparto" class="mapa-reparto"></div>
+        <div id="lista-reparto" class="lista-reparto"></div>
+      </div>
+      <div id="panel-clientes" hidden>
+        <div class="search-bar">
+          <svg class="icon icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" id="cliente-busqueda" placeholder="Buscar cliente por nombre, N° o dirección…" autocomplete="off">
+        </div>
+        <p class="admin-ayuda">Cargá acá los clientes que falten en el listado. El checkout los autocompleta por nombre, dirección o N°.</p>
+        <div class="admin-nuevo">
+          <button id="btn-cliente-nuevo" class="btn primary small">＋ Agregar cliente</button>
+          <form id="form-cliente-nuevo" class="form-nuevo" hidden>
+            <div class="form-grid">
+              <label class="campo">N° de cliente *<input type="text" id="nuevo-cliente-codigo" placeholder="Ej: 1132" inputmode="numeric" required></label>
+              <label class="campo">Nombre y apellido *<input type="text" id="nuevo-cliente-nombre" placeholder="Ej: Andrea Almeida" required></label>
+              <label class="campo">Dirección (calle)<input type="text" id="nuevo-cliente-direccion" placeholder="Ej: Madariaga"></label>
+              <label class="campo">N° de domicilio (altura)<input type="text" id="nuevo-cliente-numero" placeholder="Ej: 1234"></label>
+              <label class="campo">Teléfono celular<input type="tel" id="nuevo-cliente-telefono" placeholder="Ej: 343 1234567"></label>
+            </div>
+            <div class="form-acciones">
+              <button type="submit" class="btn primary small">Agregar cliente</button>
+              <button type="button" id="btn-cliente-nuevo-cancelar" class="btn secondary small">Cancelar</button>
+            </div>
+          </form>
+        </div>
+        <div id="lista-clientes" class="lista-admin"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer no-print">
+    <div class="footer-inner">
+      <div class="footer-marca">
+        <span class="footer-razon">Abastece · Demo</span>
+        <span class="footer-datos">Producto de <a href="https://lucianog13.github.io/portfolio/" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">Vértice</a> · IA . AUTOMATIZACIÓN . SaaS</span>
+        <span id="estado-catalogo" class="footer-estado">● Iniciando…</span>
+      </div>
+      <div class="footer-legal">
+        © 2026 Abastece (demo) · Prohibida la venta de bebidas alcohólicas a menores de 18 años. Beber con moderación.
+      </div>
+    </div>
+  </footer>
+
+  <div id="modal-admin" class="modal" hidden>
+    <div class="modal-caja">
+      <h3>Modo administrador</h3>
+      <p class="modal-sub">Ingresá con tu usuario y contraseña.</p>
+      <input type="email" id="admin-email" placeholder="usuario@correo" autocomplete="username">
+      <input type="password" id="admin-pass" placeholder="Contraseña" autocomplete="current-password">
+      <p id="admin-error" class="admin-error" hidden></p>
+      <div class="acciones">
+        <button id="btn-admin-cancelar" class="btn secondary">Cancelar</button>
+        <button id="btn-admin-login" class="btn primary">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-editar" class="modal" hidden>
+    <div class="modal-caja modal-editar">
+      <h3>✏️ Editar producto</h3>
+      <p id="editar-producto-actual" class="modal-sub"></p>
+      <label class="campo-editar">Nombre
+        <input type="text" id="editar-nombre" placeholder="Nombre del producto">
+      </label>
+      <label class="campo-editar">Descripción
+        <textarea id="editar-descripcion" rows="3" placeholder="Descripción breve que ven los clientes"></textarea>
+      </label>
+      <label class="campo-editar">Sabores (separados por coma)
+        <input type="text" id="editar-sabores" placeholder="Ej: Jamón, Pizza, Queso (vacío = sin variedades)">
+      </label>
+      <div class="campo-editar">
+        <span>Sin stock por sabor</span>
+        <div id="editar-sin-stock" class="sin-stock-sabores" hidden></div>
+      </div>
+      <div class="acciones">
+        <button id="btn-editar-cancelar" class="btn secondary">Cancelar</button>
+        <button id="btn-editar-guardar" class="btn primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-editar-cliente" class="modal" hidden>
+    <div class="modal-caja modal-editar">
+      <h3>✏️ Editar cliente</h3>
+      <p class="modal-sub">N° de cliente: <span id="editar-cliente-codigo"></span></p>
+      <label class="campo-editar">Nombre y apellido
+        <input type="text" id="editar-cliente-nombre" placeholder="Nombre y apellido">
+      </label>
+      <label class="campo-editar">Dirección (calle)
+        <input type="text" id="editar-cliente-direccion" placeholder="Dirección">
+      </label>
+      <label class="campo-editar">N° de domicilio (altura)
+        <input type="text" id="editar-cliente-numero" placeholder="Altura">
+      </label>
+      <label class="campo-editar">Teléfono celular
+        <input type="tel" id="editar-cliente-telefono" placeholder="343 1234567">
+      </label>
+      <div class="acciones">
+        <button id="btn-editar-cliente-cancelar" class="btn secondary">Cancelar</button>
+        <button id="btn-editar-cliente-guardar" class="btn primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-ver-pedido" class="modal" hidden>
+    <div class="modal-caja modal-ver-pedido">
+      <h3>Pedido</h3>
+      <div id="ver-pedido-contenido" class="ver-pedido-contenido"></div>
+      <div class="acciones">
+        <button id="btn-ver-pedido-cerrar" class="btn secondary">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-sabores" class="modal" hidden>
+    <div class="modal-caja modal-sabores">
+      <div class="modal-sabores-head">
+        <div>
+          <h3 id="modal-sabores-titulo"></h3>
+          <p class="modal-sub" id="modal-sabores-sub"></p>
+        </div>
+        <button type="button" class="btn-sabores-cerrar" data-accion="cerrar-sabores" aria-label="Cerrar">✕</button>
+      </div>
+      <div id="modal-sabores-lista" class="modal-sabores-lista"></div>
+      <div class="modal-sabores-pie">
+        <div class="modal-sabores-total">
+          <span>Unidades a agregar</span>
+          <strong id="modal-sabores-total">0</strong>
+        </div>
+        <button type="button" class="btn-sabores-confirmar" id="btn-confirmar-sabores" data-accion="confirmar-sabores" disabled>Agregar al pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast no-print" hidden></div>
+
+  <div id="zona-impresion" aria-hidden="true"></div>
+
+  <script src="js/data/products.js?v=1"></script>
+  <script src="js/data/sabores.js?v=1"></script>
+  <script src="js/data/zonas.js?v=1"></script>
+  <script src="js/core/cart.js?v=1"></script>
+  <script src="js/core/order.js?v=1"></script>
+  <script src="js/core/storage.js?v=1"></script>
+  <script src="js/core/auth.js?v=1"></script>
+  <script src="js/config.js?v=1"></script>
+  <script src="js/ui/catalog.js?v=1"></script>
+  <script src="js/ui/cartView.js?v=1"></script>
+  <script src="js/ui/checkout.js?v=1"></script>
+  <script src="js/ui/admin.js?v=1"></script>
+  <script src="js/ui/clientes.js?v=1"></script>
+  <script src="js/ui/reparto.js?v=1"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="js/app.js?v=1"></script>
+</body>
+</html>
