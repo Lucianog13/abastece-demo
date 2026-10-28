@@ -11,7 +11,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=1">
+  <!-- Analítica Umami (privada, sin cookies). PENDIENTE: reemplazar UMAMI_WEBSITE_ID por el
+       ID real del sitio (cloud.umami.is → Ajustes del sitio). Mide visitas + eventos
+       "interes" (CTA de venta) y "pedido-generado". -->
+  <script defer src="https://cloud.umami.is/script.js" data-website-id="UMAMI_WEBSITE_ID"></script>
+  <link rel="stylesheet" href="css/style.css?v=2">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
@@ -26,9 +30,10 @@
               <stop offset="1" stop-color="#a855f7"/>
             </linearGradient>
           </defs>
-          <path d="M120 34 L194 77 L194 163 L120 206 L46 163 L46 77 Z" fill="url(#gLogo)" stroke="url(#gLogo)" stroke-width="16" stroke-linejoin="round"/>
-          <path d="M78 158 C 92 124, 104 96, 120 74" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
-          <path d="M162 158 C 148 124, 136 96, 120 74" stroke="#fff" stroke-width="12" stroke-linecap="round" fill="none"/>
+          <path d="M120 13 L204 62 V178 L120 227 L36 178 V62 Z" fill="url(#gLogo)" stroke="url(#gLogo)" stroke-width="17" stroke-linejoin="round"/>
+          <path d="M79 167 L120 53 L161 167" stroke="#fff" stroke-width="21" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M120 157 V105" stroke="#fff" stroke-width="14" stroke-linecap="round"/>
+          <path d="M101 124 L120 105 L139 124" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <div class="marca-texto">
           <span class="marca-nombre">Abastece</span>
@@ -370,21 +375,53 @@
 
   <div id="zona-impresion" aria-hidden="true"></div>
 
-  <script src="js/data/products.js?v=1"></script>
-  <script src="js/data/sabores.js?v=1"></script>
-  <script src="js/data/zonas.js?v=1"></script>
-  <script src="js/core/cart.js?v=1"></script>
-  <script src="js/core/order.js?v=1"></script>
-  <script src="js/core/storage.js?v=1"></script>
-  <script src="js/core/auth.js?v=1"></script>
-  <script src="js/config.js?v=1"></script>
-  <script src="js/ui/catalog.js?v=1"></script>
-  <script src="js/ui/cartView.js?v=1"></script>
-  <script src="js/ui/checkout.js?v=1"></script>
-  <script src="js/ui/admin.js?v=1"></script>
-  <script src="js/ui/clientes.js?v=1"></script>
-  <script src="js/ui/reparto.js?v=1"></script>
+  <script src="js/data/products.js?v=2"></script>
+  <script src="js/data/sabores.js?v=2"></script>
+  <script src="js/data/zonas.js?v=2"></script>
+  <script src="js/core/cart.js?v=2"></script>
+  <script src="js/core/order.js?v=2"></script>
+  <script src="js/core/storage.js?v=2"></script>
+  <script src="js/core/auth.js?v=2"></script>
+  <script src="js/config.js?v=2"></script>
+  <script src="js/ui/catalog.js?v=2"></script>
+  <script src="js/ui/cartView.js?v=2"></script>
+  <script src="js/ui/checkout.js?v=2"></script>
+  <script src="js/ui/admin.js?v=2"></script>
+  <script src="js/ui/clientes.js?v=2"></script>
+  <script src="js/ui/reparto.js?v=2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/app.js?v=1"></script>
+  <script src="js/app.js?v=2"></script>
+
+  <!-- CTA de venta (demo): mide el interés en el producto con Umami -->
+  <style>
+    .cta-interes {
+      position: fixed; left: 50%; transform: translateX(-50%); bottom: 14px; z-index: 90;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, #3b82f6, #7c3aed);
+      color: #fff; font-weight: 700; font-size: 0.95rem;
+      padding: 0.7rem 1.3rem; border-radius: 9999px; text-decoration: none;
+      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45); white-space: nowrap;
+    }
+  </style>
+  <a id="cta-interes" class="cta-interes no-print" target="_blank" rel="noopener"
+     href="https://wa.me/5493434065289?text=Hola%2C%20quiero%20una%20app%20de%20pedidos%20como%20Abastece%20para%20mi%20negocio">
+    ¿Querés esta app para tu negocio? WhatsApp →
+  </a>
+  <script>
+    (function () {
+      var c = document.getElementById("cta-interes");
+      if (c) {
+        c.addEventListener("click", function () {
+          if (window.umami) { try { window.umami.track("interes"); } catch (e) {} }
+        });
+      }
+      var g = document.getElementById("btn-generar");
+      if (g) {
+        g.addEventListener("click", function () {
+          if (window.umami) { try { window.umami.track("pedido-generado"); } catch (e) {} }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
